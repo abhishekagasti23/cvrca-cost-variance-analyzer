@@ -1,0 +1,56 @@
+name: CVRCA CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate imports
+        run: |
+          python -c "from nlp_engine import RootCauseClassifier, ROOT_CAUSES; print('nlp_engine OK')"
+          python -c "from cost_model import run_monte_carlo; print('cost_model OK')"
+          python -c "from demo_data import generate_demo_data; print('demo_data OK')"
+
+      - name: Smoke test pipeline
+        run: |
+          python - << 'PYEOF'
+          from nlp_engine import RootCauseClassifier, ROOT_CAUSES
+          from cost_model import run_monte_carlo
+          from demo_data import generate_demo_data
+
+          # Test NLP classifier
+          clf = RootCauseClassifier()
+          clf.train()
+          result = clf.predict_single("Design error found in structural drawings requiring rework")
+          print(f"NLP OK — predicted: {result['root_cause']} ({result['confidence']:.0%})")
+
+          # Test Monte Carlo
+          mc = run_monte_carlo(
+              base_budget=500e6,
+              root_cause_pareto={"design_error": 0.4, "ground_conditions": 0.3, "scope_creep": 0.3},
+              known_variance=35e6,
+              n_simulations=1000
+          )
+          print(f"Monte Carlo OK — P50: ${mc['p50']}M | P80: ${mc['p80']}M | P90: ${mc['p90']}M")
+
+          # Test demo data
+          proj_df, co_df = generate_demo_data()
+          print(f"Demo data OK — {len(proj_df)} projects | {len(co_df)} change orders")
+          PYEOF
